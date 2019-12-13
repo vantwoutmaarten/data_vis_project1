@@ -5,7 +5,7 @@ import pandas as pd
 import time
 import googlemaps as gm
 
-gmaps = gm.Client(key=)
+gmaps = gm.Client(key='')
 
 cities = []
 irishPubs = {}

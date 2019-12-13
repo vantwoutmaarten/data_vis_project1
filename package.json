@@ -4,5 +4,8 @@
   },
   "devDependencies": {
     "rollup": "latest"
+  },
+  "dependencies": {
+    "jquery-csv": "^1.0.8"
   }
 }

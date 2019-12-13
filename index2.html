@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+
+<head>
+
+    <meta charset="utf-8">
+
+    <!-- Load d3.js -->
+    <script src="https://code.jquery.com/jquery-3.4.1.js"></script>
+    <script src="http://d3js.org/d3.v4.js"></script>
+    <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+    <script src="https://d3js.org/d3-geo-projection.v2.min.js"></script>
+    
+
+    <!-- Bootstrap CSS CDN -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css" integrity="sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4" crossorigin="anonymous">
+    <!-- Our Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+    
+
+</head>
+
+<body>
+
+        <nav class="navbar navbar-light bg-light">
+            <a class="navbar-brand" href="#">
+                <img src=https://camo.githubusercontent.com/a42604d171b0b0ea871b7826dbc927d4cfdfaefb/68747470733a2f2f64336a732e6f72672f6c6f676f2e7376673f73616e6974697a653d74727565 width="30" height="30" class="d-inline-block align-top" id="d3_pic" alt="">
+            </a>
+            <a class="navbar-brand mx-auto" href="#">
+                Data Visualisation of Irish Pubs Around the Globe by Berend-Jan Lange (4741390) & Maarten van 't Wout (4341414)
+            </a>
+        </nav>
+    <div class="container-fluid" style="position: relative;">
+        <div id="rel_mapcontainer"  style="margin-left: calc(50% - 600px); margin-right: calc(50% - 600px); ">
+            <div id="mapcontainer" style="position: absolute;">
+                <!-- Create an element where the map will take place -->
+                <svg id="my_dataviz" width="1200" height="900"></svg>
+            </div>
+        
+            <div id="countryInfo" style="position: absolute; top: 500px;">
+                <table class="table">
+                    <tbody>
+                        <tr>
+                            <td scope="row">Country:</td>
+                            <td id="infoName"></td>
+                        </tr>
+                        <tr onclick="reColor('pubs')" style="cursor: pointer;">
+                            <td scope="row">Irish Pubs:</td>
+                            <td id="infoPubs"></td>
+                        </tr>
+                        <tr onclick="reColor('population')" style="cursor: pointer;">
+                            <td scope="row">Inhabitants:</td>
+                            <td id="infoInhabitants"></td>
+                        </tr>
+                        <tr onclick="reColor('ratings')" style="cursor: pointer;">
+                            <td scope="row">Avg. Pub Rating:</td>
+                            <td id="infoRating"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // The Irish Pubs coordinates, country and rating
+        var irishPubs = []
+        var irishPubsPerCountry = {}
+
+        // Toggle variables
+        var clicked
+        var zoomedIn = false
+
+        // The svg
+        var svg = d3.select("svg"),
+            width = +svg.attr("width"),
+            height = +svg.attr("height");
+
+        // features
+        let topo
+        
+        // Map and projection
+        var path = d3.geoPath()
+            .projection(projection);
+        var projection = d3.geoMercator()
+            .scale(191)
+            .center([0, 0])
+            .translate([width / 2, height / 2]);
+        
+        // Data and color scales
+        var data = d3.map();
+        var colorScalePop = d3.scaleThreshold()
+            .domain([100000, 1000000, 10000000, 30000000, 100000000, 500000000])
+            .range(d3.schemeGreens[7]);
+        var colorScalePub = d3.scaleThreshold()
+            .domain([10, 50, 100, 250, 500, 1500])
+            .range(d3.schemeBlues[7]);
+        var colorScaleRat = d3.scaleThreshold()
+            .domain([1.5, 3, 3.5, 4, 4.5, 5])
+            .range(d3.schemeReds[7]);
+
+
+        $.ajax({
+            type: "GET",
+            url: "pubs.csv",
+            dataType: "text",
+            success: function(data) {summarizePubdata(data)}
+        });
+
+        
+        // Load external data and boot
+        d3.queue()
+            .defer(d3.json, "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson")
+            .defer(d3.csv, "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world_population.csv", function(d) { data.set(d.code, +d.pop); })
+            .await(ready);
+
+
+        // Mouseover function
+        let mouseOver = function(d) {
+            if (!zoomedIn) {
+                setInfo(d)
+            }
+        }
+
+        // Click a country function
+        let mouseClick = function(d) {
+
+            if (clicked == this) {
+                clicked = null
+                // Same country clicked
+
+                d3.selectAll(".Country")
+                .transition()
+                .duration(200)
+                .style("opacity", .8)
+                .style("stroke", "transparent")
+
+                // Zoom out to full map
+                reset()
+                zoomedIn = false
+                // Unshow Pubs
+
+            } else {
+                clicked = this
+                reset()
+                // New country clicked
+                setInfo(d)
+
+                d3.selectAll(".Country")
+                    .transition()
+                    .duration(200)
+                    .style("opacity", .5)
+                    .style("stroke", "transparent")
+                d3.select(this)
+                    .transition()
+                    .duration(200)
+                    .style("opacity", 1)
+                    .style("stroke", "black")
+
+                // Zoom in to country
+                    // Calculate bounds of country
+                const [[left_border, bottom_border], [right_border, top_border]] = path.bounds(d);
+                var bounds = path.bounds(d),
+                    scale = Math.max(1, 0.5 / Math.max((right_border-left_border) / 360, (top_border - bottom_border) / 180))
+                    coord_x = (left_border + right_border) / 2,
+                    coord_y = (bottom_border + top_border) / 2,
+                    translate_x = (width / 2 * -coord_x / 180) * scale,
+                    translate_y = (height / 2 * coord_y / 120) * scale,
+                    translate = [translate_x, translate_y];
+
+                console.log(path.bounds(d))
+                console.log(scale)
+                console.log(translate_x, translate_y)
+                // const [[x0, y0], [x1, y1]] = path.bounds(d);
+                // d3.event.stopPropagation();
+                // svg.transition().duration(750).call(
+                //     zoom.transform,
+                //     d3.zoomIdentity
+                //         .translate(width / 2, height / 2)
+                //         .scale(Math.min(8, 0.9 / Math.max((x1 - x0) / width, (y1 - y0) / height)))
+                //         .translate(-(x0 + x1) / 2, -(y0 + y1) / 2),
+                //     d3.mouse(svg.node())
+                // );
+
+                    // Perform transformation
+                svg.transition()
+                .duration(750)
+                .style("stroke-width", 1.5 / scale + "px")
+                .attr("transform", "translate(" + translate + ")scale(" + scale + ")");
+                zoomedIn = true
+                // svg.transition()
+                // .duration(750)
+                // .style("stroke-width", 1.5 / scale + "px")
+                // .attr("transform", "translate(" + translate + ")scale(" + scale + ")");
+
+                // Show pubs
+
+            }
+
+        }
+        
+ 
+        function ready(error, topo) {
+
+            this.topo = topo
+            drawMap("population", topo)
+            
+        }
+
+        function drawMap(scale, topo = this.topo) {
+
+            if (scale == "ratings") {
+                
+                // Draw the map
+                svg.append("g")
+                .attr("id", "map")
+                .selectAll("path")
+                .data(topo.features)
+                .enter()
+                .append("path")
+                // draw each country
+                .attr("d", d3.geoPath()
+                    .projection(projection)
+                )
+                // set the color of each country
+                .attr("fill", function (d) {
+                    var country = d.properties.name
+                    var foundCountry = country in irishPubsPerCountry ? true : false
+                    var avg_rating = (foundCountry ? irishPubsPerCountry[country].sum_ratings / irishPubsPerCountry[country].no_pubs : 0)
+                    return colorScaleRat(avg_rating);
+                })
+                .style("stroke", "transparent")
+                .attr("class", function(d){ return "Country" } )
+                .style("opacity", .8)
+                .on("click", mouseClick )
+                .on("mouseover", mouseOver )
+
+            } else if (scale == "pubs") {
+
+                // Draw the map
+                svg.append("g")
+                .attr("id", "map")
+                .selectAll("path")
+                .data(topo.features)
+                .enter()
+                .append("path")
+                // draw each country
+                .attr("d", d3.geoPath()
+                    .projection(projection)
+                )
+                // set the color of each country
+                .attr("fill", function (d) {
+                    var country = d.properties.name
+                    var foundCountry = country in irishPubsPerCountry ? true : false
+                    var pubs = (foundCountry ? irishPubsPerCountry[country].no_pubs : 0)
+                    return colorScalePub(pubs);
+                })
+                .style("stroke", "transparent")
+                .attr("class", function(d){ return "Country" } )
+                .style("opacity", .8)
+                .on("click", mouseClick )
+                .on("mouseover", mouseOver )
+
+            } else {
+                
+                // Draw the map
+                svg.append("g")
+                .attr("id", "map")
+                .selectAll("path")
+                .data(topo.features)
+                .enter()
+                .append("path")
+                // draw each country
+                .attr("d", d3.geoPath()
+                    .projection(projection)
+                )
+                // set the color of each country
+                .attr("fill", function (d) {
+                    d.total = data.get(d.id) || 0;
+                    return colorScalePop(d.total);
+                })
+                .style("stroke", "transparent")
+                .attr("class", function(d){ return "Country" } )
+                .style("opacity", .8)
+                .on("click", mouseClick )
+                .on("mouseover", mouseOver )
+            }
+        }
+
+        function reset() {
+
+            svg.transition()
+                .duration(750)
+                .style("stroke-width", "1.5px")
+                .attr("transform", "");
+            d3.selectAll(".Country")
+                .transition()
+                .duration(200)
+                .style("opacity", .8)
+                .style("stroke", "transparent")
+        }
+        
+        function reColor(scale) {
+            let element = document.getElementById("map")
+            element.parentNode.removeChild(element)
+            drawMap(scale)
+        }
+
+
+        function setInfo(d) {
+            country = d.properties.name
+            population = Number(d.total)
+            var foundCountry = country in irishPubsPerCountry ? true : false
+            document.getElementById("infoName").innerHTML = d.properties.name
+            document.getElementById("infoPubs").innerHTML = (foundCountry ? irishPubsPerCountry[country].no_pubs : 0)
+            document.getElementById("infoInhabitants").innerHTML = population
+            document.getElementById("infoRating").innerHTML = (foundCountry ? Math.round(irishPubsPerCountry[country].sum_ratings / irishPubsPerCountry[country].no_pubs * 100) / 100 : 0)
+        }
+        
+        function summarizePubdata(data) {
+            var allTextLines = data.split(/\r\n|\n/);
+            var headers = allTextLines[0].split(',');
+            var irishPubs = [];
+
+            for (var i=1; i<allTextLines.length; i++) {
+                var data = allTextLines[i].split(',');
+                if (data.length == headers.length) {
+
+                    var tarr = [];
+                    for (var j=0; j<headers.length; j++) {
+                        tarr.push(headers[j]+":"+data[j]);
+                    }
+                    irishPubs.push(tarr);
+
+                    country = String(data[3])
+                    if (country in irishPubsPerCountry) {
+                        irishPubsPerCountry[country].no_pubs += 1
+                        irishPubsPerCountry[country].sum_ratings += (data[4] !== undefined ? Number(data[4]) : 0)
+                        irishPubsPerCountry[country].pubs.push({
+                            "name" : data[0],
+                            "lat" : Number(data[1]),
+                            "lon" : Number(data[2]),
+                            "rating" : (data[4] !== undefined ? Number(data[4]) : 0)
+                        })
+                        
+                    } else {
+                        irishPubsPerCountry[country] = {
+                            "no_pubs" : 1,
+                            "sum_ratings" : (data[4] !== undefined ? Number(data[4]) : 0),
+                            "pubs" : [
+                                {
+                                    "name" : data[0],
+                                    "lat" : Number(data[1]),
+                                    "lon" : Number(data[2]),
+                                    "rating" : (data[4] !== undefined ? Number(data[4]) : 0)
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    
+    </script>
+
+
+
+    <!-- Load Bootstrap for page building -->
+    <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
+
+
+
+</body>

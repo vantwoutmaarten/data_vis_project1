@@ -10,24 +10,36 @@ irishPubsClipped = {}
 
 """ See if irish pubs file already exists, if so continue with that one """
 try:
-    with open('pubs.json') as pubs_file:
+    with open('Python Code/pubs.json') as pubs_file:
         irishPubs = json.load(pubs_file)
     pubs_file.close()
     print(len(irishPubs))
 except FileNotFoundError:
     None
 
-for pub in irishPubs:
-    name = irishPubs[pub]['place']['name']
-    coord = irishPubs[pub]['place']['geometry']['location']
-    irishPubsClipped[pub] = {
-        'name' : name,
-        'lat' : coord['lat'],
-        'lng' : coord['lng']
-    }
 
-with open('pubsClipped.json', 'w') as outfile:
-    outfile.write(json.dumps(irishPubsClipped, sort_keys=True, indent=4))
+with open('pubs.csv', mode='w') as csv_file:
+    fieldnames = ['name', 'lat', 'lng', 'country', 'rating']
+    writer = csv.DictWriter(csv_file, fieldnames=fieldnames, delimiter=',')
+
+    writer.writeheader()
+    for pub in irishPubs:
+        name = irishPubs[pub]['place']['name']
+        coord = irishPubs[pub]['place']['geometry']['location']
+        country = irishPubs[pub]['place']['formatted_address']
+        country = str(country).split(', ').pop()
+        if 'rating' in irishPubs[pub]['place'].keys():
+            rating = irishPubs[pub]['place']['rating']
+        else:
+            rating = None
+        if country == 'United States': country = 'USA'
+        writer.writerow({
+            'name' : name,
+            'lat' : coord['lat'],
+            'lng' : coord['lng'],
+            'country' : country,
+            'rating' : rating
+        })
 
 ### EXAMPLE IRISH PUB ###
 # "ChIJ---ZjYnEwogRac3_vO7j4LM": {
