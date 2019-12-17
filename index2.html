@@ -36,8 +36,8 @@
                 <svg id="my_dataviz" width="1200" height="900"></svg>
             </div>
         
-            <div id="countryInfo" style="position: absolute; top: 500px;">
-                <table class="table">
+            <div id="countryInfo" style="position: absolute; top: 450px;">
+                <table class="table" id="table">
                     <tbody>
                         <tr>
                             <td scope="row">Country:</td>
@@ -87,18 +87,14 @@
             .center([0, 0])
             .translate([width / 2, height / 2]);
         
-        // Data and color scales
+        // Data and color scales and legends
         var data = d3.map();
-        var colorScalePop = d3.scaleThreshold()
-            .domain([100000, 1000000, 10000000, 30000000, 100000000, 500000000])
-            .range(d3.schemeGreens[7]);
-        var colorScalePub = d3.scaleThreshold()
-            .domain([10, 50, 100, 250, 500, 1500])
-            .range(d3.schemeBlues[7]);
-        var colorScaleRat = d3.scaleThreshold()
-            .domain([1.5, 3, 3.5, 4, 4.5, 5])
-            .range(d3.schemeReds[7]);
 
+        // Tooltip
+        var Tooltip
+
+        // Pubs currently shown in Tooltip
+        var TooltipPubs = {}
 
         $.ajax({
             type: "GET",
@@ -119,6 +115,8 @@
         let mouseOver = function(d) {
             if (!zoomedIn) {
                 setInfo(d)
+            } else {
+                TooltipPubs = {}
             }
         }
 
@@ -158,7 +156,7 @@
                     .style("stroke", "black")
 
                 // Zoom in to country
-                    // Calculate bounds of country
+                // Calculate bounds of country
                 const [[left_border, bottom_border], [right_border, top_border]] = path.bounds(d);
                 var bounds = path.bounds(d),
                     scale = Math.max(1, 0.5 / Math.max((right_border-left_border) / 360, (top_border - bottom_border) / 180))
@@ -168,32 +166,36 @@
                     translate_y = (height / 2 * coord_y / 120) * scale,
                     translate = [translate_x, translate_y];
 
-                console.log(path.bounds(d))
-                console.log(scale)
-                console.log(translate_x, translate_y)
-                // const [[x0, y0], [x1, y1]] = path.bounds(d);
-                // d3.event.stopPropagation();
-                // svg.transition().duration(750).call(
-                //     zoom.transform,
-                //     d3.zoomIdentity
-                //         .translate(width / 2, height / 2)
-                //         .scale(Math.min(8, 0.9 / Math.max((x1 - x0) / width, (y1 - y0) / height)))
-                //         .translate(-(x0 + x1) / 2, -(y0 + y1) / 2),
-                //     d3.mouse(svg.node())
-                // );
 
-                    // Perform transformation
+                // Perform transformation
                 svg.transition()
                 .duration(750)
                 .style("stroke-width", 1.5 / scale + "px")
                 .attr("transform", "translate(" + translate + ")scale(" + scale + ")");
                 zoomedIn = true
-                // svg.transition()
-                // .duration(750)
-                // .style("stroke-width", 1.5 / scale + "px")
-                // .attr("transform", "translate(" + translate + ")scale(" + scale + ")");
 
-                // Show pubs
+                setTimeout(function() {
+
+                    // create a tooltip
+                    Tooltip = d3.select("#mapcontainer")
+                    .append("div")
+                    .attr("class", "tooltip")
+                    .attr("id", "tooltip")
+                    .style("opacity", 0)
+                    .style("background-color", "white")
+                    .style("border", "solid")
+                    .style("border-width", "2px")
+                    .style("border-radius", "5px")
+                    .style("padding", "5px")
+                    .style("pointer-events", "none")
+
+
+                    // Show pubs
+
+                    drawCircles(d, scale)
+
+                }, 750)
+
 
             }
 
@@ -203,90 +205,227 @@
         function ready(error, topo) {
 
             this.topo = topo
-            drawMap("population", topo)
-            
+            drawMap("population")
         }
 
         function drawMap(scale, topo = this.topo) {
 
             if (scale == "ratings") {
                 
-                // Draw the map
-                svg.append("g")
-                .attr("id", "map")
-                .selectAll("path")
-                .data(topo.features)
-                .enter()
-                .append("path")
-                // draw each country
-                .attr("d", d3.geoPath()
-                    .projection(projection)
-                )
-                // set the color of each country
-                .attr("fill", function (d) {
-                    var country = d.properties.name
-                    var foundCountry = country in irishPubsPerCountry ? true : false
-                    var avg_rating = (foundCountry ? irishPubsPerCountry[country].sum_ratings / irishPubsPerCountry[country].no_pubs : 0)
-                    return colorScaleRat(avg_rating);
-                })
-                .style("stroke", "transparent")
-                .attr("class", function(d){ return "Country" } )
-                .style("opacity", .8)
-                .on("click", mouseClick )
-                .on("mouseover", mouseOver )
+                // Add colorscheme and legend
+                var keys = [2, 3, 3.5, 4, 4.25, 4.5]
+                var legendkeys = [0, 2, 3, 3.5, 4, 4.25, 4.5]
+                var cats = ["<2", "2 - <3", "3 - <3.5", "3.5 - <4", "4 - <4.25", "4.25 - <4.5", "4.5 - <5", "5"]
 
-            } else if (scale == "pubs") {
+                var colorScaleRat = d3.scaleThreshold()
+                    .domain(keys)
+                    .range(d3.schemeReds[7]);
+
+                addLegend(svg, legendkeys, cats,  colorScaleRat, "Rating")
+                
+                // Set Table color
+                document.getElementById("table").style.color = colorScaleRat(6)
 
                 // Draw the map
                 svg.append("g")
-                .attr("id", "map")
-                .selectAll("path")
-                .data(topo.features)
-                .enter()
-                .append("path")
-                // draw each country
-                .attr("d", d3.geoPath()
-                    .projection(projection)
-                )
-                // set the color of each country
-                .attr("fill", function (d) {
-                    var country = d.properties.name
-                    var foundCountry = country in irishPubsPerCountry ? true : false
-                    var pubs = (foundCountry ? irishPubsPerCountry[country].no_pubs : 0)
-                    return colorScalePub(pubs);
-                })
-                .style("stroke", "transparent")
-                .attr("class", function(d){ return "Country" } )
-                .style("opacity", .8)
-                .on("click", mouseClick )
-                .on("mouseover", mouseOver )
+                    .attr("id", "map")
+                    .selectAll("path")
+                    .data(topo.features)
+                    .enter()
+                    .append("path")
+                    // draw each country
+                    .attr("d", d3.geoPath()
+                        .projection(projection)
+                    )
+                    // set the color of each country
+                    .attr("fill", function (d) {
+                        var country = d.properties.name
+                        var foundCountry = country in irishPubsPerCountry ? true : false
+                        var avg_rating = (foundCountry ? irishPubsPerCountry[country].sum_ratings / irishPubsPerCountry[country].no_pubs : 0)
+                        return colorScaleRat(avg_rating);
+                    })
+                    .style("stroke", "transparent")
+                    .attr("class", function(d){ return "Country" } )
+                    .style("opacity", .8)
+                    .on("click", mouseClick )
+                    .on("mouseover", mouseOver )
 
-            } else {
+            } else if (scale == "population") {
+
+
+                // Add colorscheme and legend
+                var keys = [100000, 1000000, 10000000, 30000000, 100000000, 500000000]
+                var legendkeys = [0, 100000, 1000000, 10000000, 30000000, 100000000, 500000000]
+                var cats = ["<100,000", "100,000-999,999", "1,000,000 - 9,999,999", "10,000,000 - 29,999,999", "30,000,000 - 99,999,999", "100,000,000 - 499,999,999", "> 500,000,000"]
+
+                var colorScalePop = d3.scaleThreshold()
+                    .domain(keys)
+                    .range(d3.schemeBlues[7]);
+
+                addLegend(svg, legendkeys, cats, colorScalePop, "Population")
+
+                // Set Table color
+                document.getElementById("table").style.color = colorScalePop(500000001)
                 
                 // Draw the map
                 svg.append("g")
-                .attr("id", "map")
-                .selectAll("path")
-                .data(topo.features)
-                .enter()
-                .append("path")
-                // draw each country
-                .attr("d", d3.geoPath()
-                    .projection(projection)
-                )
-                // set the color of each country
-                .attr("fill", function (d) {
-                    d.total = data.get(d.id) || 0;
-                    return colorScalePop(d.total);
-                })
-                .style("stroke", "transparent")
-                .attr("class", function(d){ return "Country" } )
-                .style("opacity", .8)
-                .on("click", mouseClick )
-                .on("mouseover", mouseOver )
+                    .attr("id", "map")
+                    .selectAll("path")
+                    .data(topo.features)
+                    .enter()
+                    .append("path")
+                    // draw each country
+                    .attr("d", d3.geoPath()
+                        .projection(projection)
+                    )
+                    // set the color of each country
+                    .attr("fill", function (d) {
+                        d.total = data.get(d.id) || 0;
+                        return colorScalePop(d.total);
+                    })
+                    .style("stroke", "transparent")
+                    .attr("class", function(d){ return "Country" } )
+                    .style("opacity", .8)
+                    .on("click", mouseClick )
+                    .on("mouseover", mouseOver )
+
+            } else {
+
+                // Add colorscheme and legend   
+                var keys = [10, 50, 100, 250, 500, 1500]
+                var legendkeys = [0, 10, 50, 100, 250, 500, 1500]
+                var cats = ["<10", "10 - <50", "50 - <100", "100 - <250", "250 - <500", "500 - <1500", "1500+"]
+
+                var colorScalePub = d3.scaleThreshold()
+                    .domain(keys)
+                    .range(d3.schemeGreens[7]);
+
+                addLegend(svg, legendkeys, cats, colorScalePub, "Pubs")
+
+                // Set Table color
+                document.getElementById("table").style.color = colorScalePub(1501)
+                
+                // Draw the map
+                svg.append("g")
+                    .attr("id", "map")
+                    .selectAll("path")
+                    .data(topo.features)
+                    .enter()
+                    .append("path")
+                    // draw each country
+                    .attr("d", d3.geoPath()
+                        .projection(projection)
+                    )
+                    // set the color of each country
+                    .attr("fill", function (d) {
+                        var country = d.properties.name
+                        var foundCountry = country in irishPubsPerCountry ? true : false
+                        var pubs = (foundCountry ? irishPubsPerCountry[country].no_pubs : 0)
+                        return colorScalePub(pubs);
+                    })
+                    .style("stroke", "transparent")
+                    .attr("class", function(d){ return "Country" } )
+                    .style("opacity", .8)
+                    .on("click", mouseClick )
+                    .on("mouseover", mouseOver )
+
             }
         }
 
+
+        // LEGEND FUNCTION
+
+        function addLegend(svg, keys, categories, color, text) {
+            // Add legend Label
+            svg.selectAll("mydots")
+                .data(keys)
+                .enter()
+                .append("text")
+                    .attr("x", 20)
+                    .attr("y", 670)
+                    .style("fill", function(d){ return color(500000000)})
+                    .text(text)
+                    .attr("text-anchor", "left")
+                    .style("alignment-baseline", "middle")
+                    .attr("class", "legend")
+
+            // Add one dot in the legend for each category.
+            svg.selectAll("mydots")
+                .data(keys)
+                .enter()
+                .append("circle")
+                    .attr("cx",20)
+                    .attr("cy", function(d,i){ return 700 + i*25}) // 100 is where the first dot appears. 25 is the distance between dots
+                    .attr("r", 7)
+                    .style("fill", function(d){ return color(d)})
+                    .attr("class", "legend")
+
+            // Add one label in the legend for each category.
+            svg.selectAll("mylabels")
+                .data(categories)
+                .enter()
+                .append("text")
+                    .attr("x", 40)
+                    .attr("y", function(d,i){ return 700 + i*25}) // 100 is where the first dot appears. 25 is the distance between dots
+                    .style("fill", function(d){ return color(500000000)})
+                    .text(function(d){ return d})
+                    .attr("text-anchor", "left")
+                    .style("alignment-baseline", "middle")
+                    .attr("class", "legend")
+        }
+
+        // CIRCLES AND TOOLTIP FUNCTIONS //
+        // Three function that change the tooltip when user hover / move / leave a cell
+        var mousettover = function(d) {
+            Tooltip.style("opacity", 1)
+            TooltipPubs[d.name] = 
+                "<h6>" + d.name + " rating: " + round(d.rating, 1) + "</h6>" + "longitude: " + round(d.lon, 5) + " latitude: " + round(d.lat, 5) + "<br> <br>"
+        }
+        var mousettmove = function(d) {
+
+            var text = ""
+            for (var key in TooltipPubs) {
+                if (!TooltipPubs.hasOwnProperty(key)) continue
+                text += TooltipPubs[key]
+            }
+
+            Tooltip
+                .html(text)
+                .style("left", (d3.mouse(this)[0]) + 0 + "px")
+                .style("top", (d3.mouse(this)[1]) + -150 + "px")
+            }
+        var mousettleave = function(d) {
+            Tooltip.style("opacity", 0)
+        }
+
+        //Add Circles
+        function drawCircles(d, scale) {
+            country = d.properties.name
+            var foundCountry = country in irishPubsPerCountry ? true : false
+
+            if (foundCountry) {
+
+                // Add circles:
+                svg
+                .selectAll("myCircles")
+                .data(irishPubsPerCountry[country].pubs)
+                .enter()
+                .append("circle")
+                    .attr("cx", function(d){ return projection([d.lon, d.lat])[0] })
+                    .attr("cy", function(d){ return projection([d.lon, d.lat])[1] })
+                    .attr("r", 2 / scale)
+                    .attr("class", "circle")
+                    .style("fill", "#000000")
+                    .attr("stroke", "#000000")
+                    .attr("stroke-width", 1 / scale)
+                    .attr("fill-opacity", .4)
+                .on("mouseover", mousettover)
+                .on("mousemove", mousettmove)
+                .on("mouseleave", mousettleave)
+            }
+        }
+
+        // Reset zoom and remove pubs(circles) from DOM
         function reset() {
 
             svg.transition()
@@ -298,15 +437,31 @@
                 .duration(200)
                 .style("opacity", .8)
                 .style("stroke", "transparent")
+            
+            let elements = document.getElementsByClassName("circle")
+            while (elements[0]) {
+                elements[0].parentNode.removeChild(elements[0])
+            }
+
+            let tooltipElement = document.getElementsByClassName("tooltip")
+            console.log(tooltipElement)
+            if (tooltipElement.length > 0) {
+                tooltipElement[0].parentNode.removeChild(tooltipElement[0])
+            }
         }
         
+        // Remove map and legend and create new map with different color scheme
         function reColor(scale) {
             let element = document.getElementById("map")
             element.parentNode.removeChild(element)
+            let legendElements = document.getElementsByClassName("legend")
+            while (legendElements[0]) {
+                legendElements[0].parentNode.removeChild(legendElements[0])
+            }
             drawMap(scale)
         }
 
-
+        // Set the table information when hovering over a country if not zoomed in. 
         function setInfo(d) {
             country = d.properties.name
             population = Number(d.total)
@@ -314,9 +469,10 @@
             document.getElementById("infoName").innerHTML = d.properties.name
             document.getElementById("infoPubs").innerHTML = (foundCountry ? irishPubsPerCountry[country].no_pubs : 0)
             document.getElementById("infoInhabitants").innerHTML = population
-            document.getElementById("infoRating").innerHTML = (foundCountry ? Math.round(irishPubsPerCountry[country].sum_ratings / irishPubsPerCountry[country].no_pubs * 100) / 100 : 0)
+            document.getElementById("infoRating").innerHTML = (foundCountry ? round(irishPubsPerCountry[country].sum_ratings / irishPubsPerCountry[country].no_pubs, 2) : 0)
         }
         
+        // Summarize 35000 pubs into hashmap by country
         function summarizePubdata(data) {
             var allTextLines = data.split(/\r\n|\n/);
             var headers = allTextLines[0].split(',');
@@ -359,6 +515,11 @@
                     }
                 }
             }
+        }
+
+        // improved rounding function
+        function round(number, decimals) {
+            return Math.round(number * (10 ** decimals)) / 10 ** decimals
         }
     
     </script>
